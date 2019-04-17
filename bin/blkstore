@@ -15,14 +15,16 @@ def main():
     subparsers = parser.add_subparsers(help="subcommand help")
 
     parser_serve = subparsers.add_parser("serve", help="Launch in server mode")
-    parser_serve.add_argument("port", help="Localhost port to listen on")
+    parser_serve.add_argument("--port", required=True, help="Localhost port to listen on")
     parser_serve.add_argument("dir", help="Directory for file storage")
 
     parser_upload = subparsers.add_parser("upload", help="Upload file to server")
-    parser_upload.add_argument("addr", help="Address to connect to")
-    parser_upload.add_argument("port", help="Port to connect to")
+    parser_upload.add_argument("--addr", required=True, help="Address to connect to")
+    parser_upload.add_argument("--port", required=True, help="Port to connect to")
 
     parser_download = subparsers.add_parser("download", help="Download file from server")
+    parser_download.add_argument("--addr", required=True, help="Address to connect to")
+    parser_download.add_argument("--port", required=True, help="Port to connect to")
 
     parser.parse_args()
 
