@@ -18,6 +18,7 @@ def check_for_blkar_installation():
     ver = version.parse(ver_str)
     if ver < blkar_min_ver:
         print("Version " + ver_str + " not supported, minimum is " + blkar_min_ver)
+        exit(1)
 
 def main():
     check_for_blkar_installation()
