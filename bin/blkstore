@@ -2,13 +2,22 @@
 import argparse
 import shutil
 import ipaddress
+from packaging import version
+import re
+import subprocess
 
 blkar_name="blkar"
+blkar_min_ver=version.parse("6.0.0")
 
 def check_for_blkar_installation():
     if shutil.which(blkar_name) == None:
         print(blkar_name + " not detected, please make sure you have installed blkar correctly")
         exit(1)
+
+    ver_str = re.match("blkar (.*)\n", subprocess.check_output(["blkar", "--version"]).decode("utf-8")).group(1)
+    ver = version.parse(ver_str)
+    if ver < blkar_min_ver:
+        print("Version " + ver_str + " not supported, minimum is " + blkar_min_ver)
 
 def main():
     check_for_blkar_installation()
