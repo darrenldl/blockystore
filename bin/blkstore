@@ -4,13 +4,19 @@ import shutil
 import ipaddress
 from packaging import version
 import re
-import subprocess
+from subprocess import Popen
+import socket
+import threading
 
 blkar_name="blkar"
 blkar_min_ver=version.parse("6.0.0")
 blkar_max_ver_exc=version.parse("7.0.0")
 
 default_port=20000
+
+rs_data=10
+rs_parity=2
+burst=10
 
 def check_for_blkar_installation():
     if shutil.which(blkar_name) == None:
@@ -23,24 +29,67 @@ def check_for_blkar_installation():
         print("Version " + ver_str + " not supported, version must be >=" + blkar_min_ver + " && < " + blkar_max_ver_exc)
         exit(1)
 
+class encoder:
+    def __init__(self, filepath : str):
+        self.proc = Popen(["blkar", "encode",
+                           "--sbx-version", "19",
+                           "--rs-data", str(rs_data),
+                           "--rs-parity", str(rs_parity),
+                           "--burst", str(burst),
+                           "--json"],
+                          stdin=PIPE,
+                          stdout=PIPE,
+                          stderr=PIPE)
+
+    def encode(self, input : bytes):
+        self.popen.communicate(input)
+
+def serve_single_client():
+
+
+def serve(args):
+    addr = "127.0.0.1"
+    port = args.p
+    check_for_blkar_installation()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((addr, port))
+        s.listen()
+        while True:
+            conn, addr = s.accept()
+            with conn:
+                print('Connected by', addr)
+                while True:
+                    data = conn.recv(1024)
+                    if not data:
+                        break
+                    conn.sendall(data)
+
+def upload(args):
+    None
+
+def download(args):
+    None
+
 def main():
     check_for_blkar_installation()
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help="subcommand help")
 
     parser_serve = subparsers.add_parser("serve", help="Launch in server mode")
-    parser_serve.add_argument("-p", metavar="PORT", required=True, type=int, help="Localhost port to listen on, defaults to " + str(default_port))
+    parser_serve.add_argument("-p", metavar="PORT", default=default_port, type=int, help="Localhost port to listen on, defaults to " + str(default_port))
     parser_serve.add_argument("dir", help="Directory for file storage")
+    parser_serve.set_defaults(func=serve)
 
     parser_upload = subparsers.add_parser("upload", help="Upload file to server")
     parser_upload.add_argument("addr", type=ipaddress.ip_address, help="Address to connect to")
-    parser_upload.add_argument("-p", metavar="PORT", required=True, type=int, help="Port to connect to, defaults to " + str(default_port))
+    parser_upload.add_argument("-p", metavar="PORT", default=default_port, type=int, help="Port to connect to, defaults to " + str(default_port))
 
     parser_download = subparsers.add_parser("download", help="Download file from server")
     parser_download.add_argument("addr", type=ipaddress.ip_address, help="Address to connect to")
-    parser_download.add_argument("-p", metavar="PORT", required=True, type=int, help="Port to connect to, defaults to " + str(default_port))
+    parser_download.add_argument("-p", metavar="PORT", default=default_port, type=int, help="Port to connect to, defaults to " + str(default_port))
 
-    parser.parse_args()
+    args = parser.parse_args()
+    args.func(args)
 
 if __name__ == "__main__":
     main()
