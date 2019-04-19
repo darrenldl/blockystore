@@ -10,6 +10,8 @@ blkar_name="blkar"
 blkar_min_ver=version.parse("6.0.0")
 blkar_max_ver_exc=version.parse("7.0.0")
 
+default_port=20000
+
 def check_for_blkar_installation():
     if shutil.which(blkar_name) == None:
         print(blkar_name + " not detected, please make sure you have installed blkar correctly")
@@ -17,7 +19,7 @@ def check_for_blkar_installation():
 
     ver_str = re.match("blkar (.*)\n", subprocess.check_output(["blkar", "--version"]).decode("utf-8")).group(1)
     ver = version.parse(ver_str)
-    if ver < blkar_min_ver || ver >= blkar_max_ver_exc:
+    if ver < blkar_min_ver or ver >= blkar_max_ver_exc:
         print("Version " + ver_str + " not supported, version must be >=" + blkar_min_ver + " && < " + blkar_max_ver_exc)
         exit(1)
 
@@ -27,16 +29,16 @@ def main():
     subparsers = parser.add_subparsers(help="subcommand help")
 
     parser_serve = subparsers.add_parser("serve", help="Launch in server mode")
-    parser_serve.add_argument("--port", required=True, type=int, help="Localhost port to listen on")
+    parser_serve.add_argument("-p", metavar="PORT", required=True, type=int, help="Localhost port to listen on, defaults to " + str(default_port))
     parser_serve.add_argument("dir", help="Directory for file storage")
 
     parser_upload = subparsers.add_parser("upload", help="Upload file to server")
-    parser_upload.add_argument("--addr", required=True, type=ipaddress.ip_address, help="Address to connect to")
-    parser_upload.add_argument("--port", required=True, type=int, help="Port to connect to")
+    parser_upload.add_argument("addr", type=ipaddress.ip_address, help="Address to connect to")
+    parser_upload.add_argument("-p", metavar="PORT", required=True, type=int, help="Port to connect to, defaults to " + str(default_port))
 
     parser_download = subparsers.add_parser("download", help="Download file from server")
-    parser_download.add_argument("--addr", required=True, type=ipaddress.ip_address, help="Address to connect to")
-    parser_download.add_argument("--port", required=True, type=int, help="Port to connect to")
+    parser_download.add_argument("addr", type=ipaddress.ip_address, help="Address to connect to")
+    parser_download.add_argument("-p", metavar="PORT", required=True, type=int, help="Port to connect to, defaults to " + str(default_port))
 
     parser.parse_args()
 
