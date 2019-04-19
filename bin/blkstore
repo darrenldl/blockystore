@@ -8,6 +8,7 @@ import subprocess
 
 blkar_name="blkar"
 blkar_min_ver=version.parse("6.0.0")
+blkar_max_ver_exc=version.parse("7.0.0")
 
 def check_for_blkar_installation():
     if shutil.which(blkar_name) == None:
@@ -16,8 +17,8 @@ def check_for_blkar_installation():
 
     ver_str = re.match("blkar (.*)\n", subprocess.check_output(["blkar", "--version"]).decode("utf-8")).group(1)
     ver = version.parse(ver_str)
-    if ver < blkar_min_ver:
-        print("Version " + ver_str + " not supported, minimum is " + blkar_min_ver)
+    if ver < blkar_min_ver || ver >= blkar_max_ver_exc:
+        print("Version " + ver_str + " not supported, version must be >=" + blkar_min_ver + " && < " + blkar_max_ver_exc)
         exit(1)
 
 def main():
