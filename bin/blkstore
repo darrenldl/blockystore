@@ -14,9 +14,11 @@ blkar_max_ver_exc=version.parse("7.0.0")
 
 default_port=20000
 
-rs_data=10
-rs_parity=2
-burst=10
+rs_data = 10
+rs_parity = 2
+burst = 10
+
+data_chunk = 4096 - 16
 
 def check_for_blkar_installation():
     if shutil.which(blkar_name) == None:
@@ -36,18 +38,59 @@ class encoder:
                            "--rs-data", str(rs_data),
                            "--rs-parity", str(rs_parity),
                            "--burst", str(burst),
-                           "--json"],
+                           "--json",
+                           "-",
+                           filepath],
                           stdin=PIPE,
-                          stdout=PIPE,
-                          stderr=PIPE)
+                          stdout=PIPE)
 
     def encode(self, input : bytes):
-        self.popen.communicate(input)
+        self.proc.stdin.write(input)
 
-def serve_single_client():
+    def close(self):
+        self.proc.terminate()
 
+class decoder:
+    def __init__(self, filepath : str):
+        self.proc = Popen(["blkar", "decode",
+                           "--json"
+                           filepath,
+                           "-"],
+                          stdin=PIPE,
+                          stdout=PIPE)
+
+    def decode(self):
+        return self.proc.stdout.read(data_chunk)
+
+    def close(self):
+        self.proc.terminate()
+
+class single_client_server:
+    def __init__(self, stop_ev, conn):
+        self.conn = conn
+        self.stop_ev = stop_ev
+
+        thread = threading.Thread(target=self.run, args=())
+        thread.start()
+
+    def run(self):
+        json_strs = []
+        left_over = ""
+        # read until ^ is encountered
+        while not self.stop_ev.is_set():
+            data = self.conn.recv(1024)
+            split = bytes.split(data, b'^')
+            json_strs.append(split[0])
+            if len(split) > 1:
+                left_over=split[1]
+                break
+
+        # parse JSON header
+        json_str = "".join(json_strs)
+        json.loads(json_str)
 
 def serve(args):
+    stop_ev = threading.Event()
     addr = "127.0.0.1"
     port = args.p
     check_for_blkar_installation()
