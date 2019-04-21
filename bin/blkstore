@@ -9,8 +9,8 @@ import socket
 import threading
 
 blkar_name="blkar"
-blkar_min_ver=version.parse("6.0.0")
-blkar_max_ver_exc=version.parse("7.0.0")
+blkar_min_ver=version.parse("7.0.0")
+blkar_max_ver_exc=version.parse("8.0.0")
 
 default_port=20000
 
