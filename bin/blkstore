@@ -4,6 +4,7 @@ import shutil
 import ipaddress
 from packaging import version
 import re
+import subprocess
 from subprocess import Popen
 import socket
 import threading
@@ -31,7 +32,7 @@ def check_for_blkar_installation():
         print("Version " + ver_str + " not supported, version must be >=" + blkar_min_ver + " && < " + blkar_max_ver_exc)
         exit(1)
 
-class encoder:
+class Encoder:
     def __init__(self, filepath : str):
         self.proc = Popen(["blkar", "encode",
                            "--sbx-version", "19",
@@ -50,10 +51,10 @@ class encoder:
     def close(self):
         self.proc.terminate()
 
-class decoder:
+class Decoder:
     def __init__(self, filepath : str):
         self.proc = Popen(["blkar", "decode",
-                           "--json"
+                           "--json",
                            filepath,
                            "-"],
                           stdin=PIPE,
@@ -65,7 +66,7 @@ class decoder:
     def close(self):
         self.proc.terminate()
 
-class single_client_server:
+class SingleClientServer:
     def __init__(self, stop_ev, conn):
         self.conn = conn
         self.stop_ev = stop_ev
@@ -88,6 +89,17 @@ class single_client_server:
         # parse JSON header
         json_str = "".join(json_strs)
         json.loads(json_str)
+
+        client_op = "upload"
+
+        if client_op == "upload":
+            print("Client requested to upload")
+            encoder = Encoder("file_placeholder")
+        elif mode == "decode":
+            print("Client requested to download")
+            decoder = Decoder("file_placeholder")
+        else:
+            print("Client issued an invalid request")
 
 def serve(args):
     stop_ev = threading.Event()
@@ -113,9 +125,13 @@ def upload(args):
 def download(args):
     None
 
+def print_please_specify_subcommand(args):
+    print("Invoke with -h or --help for help message")
+
 def main():
     check_for_blkar_installation()
     parser = argparse.ArgumentParser()
+    parser.set_defaults(func=print_please_specify_subcommand)
     subparsers = parser.add_subparsers(help="subcommand help")
 
     parser_serve = subparsers.add_parser("serve", help="Launch in server mode")
@@ -126,10 +142,12 @@ def main():
     parser_upload = subparsers.add_parser("upload", help="Upload file to server")
     parser_upload.add_argument("addr", type=ipaddress.ip_address, help="Address to connect to")
     parser_upload.add_argument("-p", metavar="PORT", default=default_port, type=int, help="Port to connect to, defaults to " + str(default_port))
+    parser_serve.set_defaults(func=upload)
 
     parser_download = subparsers.add_parser("download", help="Download file from server")
     parser_download.add_argument("addr", type=ipaddress.ip_address, help="Address to connect to")
     parser_download.add_argument("-p", metavar="PORT", default=default_port, type=int, help="Port to connect to, defaults to " + str(default_port))
+    parser_serve.set_defaults(func=download)
 
     args = parser.parse_args()
     args.func(args)
