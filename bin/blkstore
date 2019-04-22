@@ -134,7 +134,7 @@ def print_please_specify_subcommand(args):
 def main():
     check_for_blkar_installation()
     parser = argparse.ArgumentParser()
-    # parser.set_defaults(func=print_please_specify_subcommand)
+    parser.set_defaults(func=print_please_specify_subcommand)
     subparsers = parser.add_subparsers(help="subcommand help")
 
     parser_serve = subparsers.add_parser("serve", help="Launch in server mode")
