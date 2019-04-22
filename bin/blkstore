@@ -88,18 +88,21 @@ class SingleClientServer:
 
         # parse JSON header
         json_str = "".join(json_strs)
-        json.loads(json_str)
+        config = json.loads(json_str)
 
-        client_op = "upload"
+        try:
+            client_op = config["client_op"]
 
-        if client_op == "upload":
-            print("Client requested to upload")
-            encoder = Encoder("file_placeholder")
-        elif mode == "decode":
-            print("Client requested to download")
-            decoder = Decoder("file_placeholder")
-        else:
-            print("Client issued an invalid request")
+            if client_op == "upload":
+                print("Client requested to upload")
+                encoder = Encoder("file_placeholder")
+            elif mode == "decode":
+                print("Client requested to download")
+                decoder = Decoder("file_placeholder")
+            else:
+                print("Client issued an invalid request")
+        except KeyError:
+            print("Incorrect config sent from client")
 
 def serve(args):
     stop_ev = threading.Event()
@@ -120,10 +123,10 @@ def serve(args):
                     conn.sendall(data)
 
 def upload(args):
-    None
+    return None
 
 def download(args):
-    None
+    return None
 
 def print_please_specify_subcommand(args):
     print("Invoke with -h or --help for help message")
@@ -131,7 +134,7 @@ def print_please_specify_subcommand(args):
 def main():
     check_for_blkar_installation()
     parser = argparse.ArgumentParser()
-    parser.set_defaults(func=print_please_specify_subcommand)
+    # parser.set_defaults(func=print_please_specify_subcommand)
     subparsers = parser.add_subparsers(help="subcommand help")
 
     parser_serve = subparsers.add_parser("serve", help="Launch in server mode")
@@ -142,12 +145,12 @@ def main():
     parser_upload = subparsers.add_parser("upload", help="Upload file to server")
     parser_upload.add_argument("addr", type=ipaddress.ip_address, help="Address to connect to")
     parser_upload.add_argument("-p", metavar="PORT", default=default_port, type=int, help="Port to connect to, defaults to " + str(default_port))
-    parser_serve.set_defaults(func=upload)
+    parser_upload.set_defaults(func=upload)
 
     parser_download = subparsers.add_parser("download", help="Download file from server")
     parser_download.add_argument("addr", type=ipaddress.ip_address, help="Address to connect to")
     parser_download.add_argument("-p", metavar="PORT", default=default_port, type=int, help="Port to connect to, defaults to " + str(default_port))
-    parser_serve.set_defaults(func=download)
+    parser_download.set_defaults(func=download)
 
     args = parser.parse_args()
     args.func(args)
