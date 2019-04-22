@@ -8,6 +8,7 @@ import subprocess
 from subprocess import Popen
 import socket
 import threading
+import json
 
 blkar_name="blkar"
 blkar_min_ver=version.parse("7.0.0")
@@ -67,14 +68,16 @@ class Decoder:
         self.proc.terminate()
 
 class SingleClientServer:
-    def __init__(self, stop_ev, conn):
+    def __init__(self, stop_ev, conn, addr):
         self.conn = conn
+        self.addr = addr
         self.stop_ev = stop_ev
 
         thread = threading.Thread(target=self.run, args=())
         thread.start()
 
-    def run(self):
+    def core(self):
+        print('Serving ', self.addr)
         json_strs = []
         left_over = ""
         # read until ^ is encountered
@@ -87,7 +90,8 @@ class SingleClientServer:
                 break
 
         # parse JSON header
-        json_str = "".join(json_strs)
+        json_str = b"".join(json_strs)
+        print(json_str)
         config = json.loads(json_str)
 
         try:
@@ -96,6 +100,11 @@ class SingleClientServer:
             if client_op == "upload":
                 print("Client requested to upload")
                 encoder = Encoder("file_placeholder")
+                while True:
+                    data = conn.recv(1024)
+                    if not data:
+                        break
+                    conn.sendall(data)
             elif mode == "decode":
                 print("Client requested to download")
                 decoder = Decoder("file_placeholder")
@@ -103,24 +112,31 @@ class SingleClientServer:
                 print("Client issued an invalid request")
         except KeyError:
             print("Incorrect config sent from client")
+        except KeyboardInterrupt:
+            print("Interrupted")
+            self.clean_up()
+
+    def clean_up(self):
+        self.conn.close()
+
+    def run(self):
+        self.core()
+        self.clean_up()
 
 def serve(args):
     stop_ev = threading.Event()
     addr = "127.0.0.1"
     port = args.p
     check_for_blkar_installation()
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((addr, port))
-        s.listen()
-        while True:
-            conn, addr = s.accept()
-            with conn:
-                print('Connected by', addr)
-                while True:
-                    data = conn.recv(1024)
-                    if not data:
-                        break
-                    conn.sendall(data)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind((addr, port))
+            s.listen()
+            while True:
+                conn, addr = s.accept()
+                SingleClientServer(stop_ev, conn, addr)
+    except KeyboardInterrupt:
+        print("Interrupted")
 
 def upload(args):
     return None
