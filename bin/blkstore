@@ -5,7 +5,7 @@ import ipaddress
 from packaging import version
 import re
 import subprocess
-from subprocess import Popen
+from subprocess import Popen, PIPE
 import socket
 import threading
 import json
@@ -50,7 +50,7 @@ class Encoder:
         self.proc.stdin.write(input)
 
     def close(self):
-        self.proc.terminate()
+        self.proc.stdin.close()
 
 class Decoder:
     def __init__(self, filepath : str):
@@ -72,6 +72,8 @@ class SingleClientServer:
         self.conn = conn
         self.addr = addr
         self.stop_ev = stop_ev
+        self.encoder = None
+        self.decoder = None
 
         thread = threading.Thread(target=self.run, args=())
         thread.start()
@@ -79,45 +81,56 @@ class SingleClientServer:
     def core(self):
         print('Serving ', self.addr)
         json_strs = []
-        left_over = ""
+        left_over = b""
         # read until ^ is encountered
         while not self.stop_ev.is_set():
             data = self.conn.recv(1024)
+            if not data:
+                break
             split = bytes.split(data, b'^')
             json_strs.append(split[0])
             if len(split) > 1:
-                left_over=split[1]
+                left_over = split[1]
                 break
 
-        # parse JSON header
-        json_str = b"".join(json_strs)
-        print(json_str)
-        config = json.loads(json_str)
-
         try:
+            # parse JSON header
+            json_str = b"".join(json_strs)
+            print(json_str)
+            config = json.loads(json_str)
+
             client_op = config["client_op"]
 
             if client_op == "upload":
                 print("Client requested to upload")
-                encoder = Encoder("file_placeholder")
+                self.encoder = Encoder("file_placeholder")
+                print(left_over)
+                self.encoder.encode(left_over)
                 while True:
-                    data = conn.recv(1024)
+                    data = self.conn.recv(1024)
                     if not data:
                         break
-                    conn.sendall(data)
+                    self.encoder.encode(data)
             elif mode == "decode":
                 print("Client requested to download")
                 decoder = Decoder("file_placeholder")
             else:
                 print("Client issued an invalid request")
+        except json.decoder.JSONDecodeError:
+            print("Invalid config sent from client")
         except KeyError:
-            print("Incorrect config sent from client")
+            print("Invalid config sent from client")
         except KeyboardInterrupt:
             print("Interrupted")
+        finally:
             self.clean_up()
 
     def clean_up(self):
         self.conn.close()
+        if self.encoder is not None:
+            self.encoder.close()
+        if self.decoder is not None:
+            self.decoder.close()
 
     def run(self):
         self.core()
