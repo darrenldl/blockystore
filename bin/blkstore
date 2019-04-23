@@ -14,6 +14,8 @@ from pathlib import Path
 import os
 import random
 import string
+import sys
+import time
 
 blkar_name="blkar"
 blkar_min_ver=version.parse("7.0.0")
@@ -96,24 +98,23 @@ class ClientRequest(Message):
     def __init__(self):
         self.op = None
         self.file_name = None
+        self.file_size = None
 
     def to_dict(self):
-        {
+        return {
             "op" : self.op,
-            "file_name" : self.file_name
+            "file_name" : self.file_name,
+            "file_size" : self.file_size
         }
 
-    def pack(self, op, file_name):
+    def pack(self, op, file_name, file_size):
         if op not in ClientRequest.OPS:
             raise ValueError("Invalid op")
         self.op = op
         self.file_name = file_name
+        self.file_size = file_size
 
     def read_from_file(self, file):
-        # msg = b""
-        # while not msg:
-        #     msg = json.loads(file.readline())
-
         msg = json.loads(file.readline())
 
         print("test")
@@ -123,6 +124,7 @@ class ClientRequest(Message):
         if self.op not in ClientRequest.OPS:
             raise ValueError("Invalid op")
         self.file_name = msg["file_name"]
+        self.file_size = msg["file_size"]
 
 class ServerReply(Message):
     def __init__(self):
@@ -130,7 +132,7 @@ class ServerReply(Message):
         self.file_name = None
 
     def to_dict(self):
-        {
+        return {
             "okay" : self.okay,
             "file_name" : self.file_name
         }
@@ -149,8 +151,9 @@ class ServerReply(Message):
 
 class SingleClientServer:
     def __init__(self, stop_ev, conn, addr):
+        # conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        # conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
         self.conn = conn
-        self.file = conn.makefile(mode='rwb')
         self.addr = addr
         self.stop_ev = stop_ev
         self.encoder = None
@@ -163,27 +166,34 @@ class SingleClientServer:
         print("Serving ", self.addr)
 
         try:
-            # read request
-            client_req = ClientRequest()
-            client_req.read_from_file(self.file)
+            with self.conn.makefile(mode="rb") as f:
+                # read request
+                client_req = ClientRequest()
+                client_req.read_from_file(f)
 
             if client_req.op == "upload":
                 print("Client requested to upload")
                 file_name = client_req.file_name + "_" + get_time_str() + "_" + gen_random_str(12) + ".ecsbx"
-                while os.path.isfile(file_name):
-                    file
-                self.encoder = Encoder(client_req.file_name + get_time_str() + ".ecsbx")
+                self.encoder = Encoder(file_name)
 
-                # send reply
-                rep = ServerReply()
-                rep.pack(True, file_name)
-                rep.write_to_file(self.file)
-
-                while True:
-                    data = self.file.read(1024)
+                print("Receiving file")
+                len_read = 0
+                while len_read < client_req.file_size:
+                    len_remaining = client_req.file_size - len_read
+                    # data = self.conn.recv(len_remaining)
+                    data = self.conn.recv(1024)
+                    # print(data)
+                    len_read += len(data)
+                    print(len_read)
                     if not data:
                         break
                     self.encoder.encode(data)
+                print("File transfer complete")
+
+                # send reply
+                # rep = ServerReply()
+                # rep.pack(True, file_name)
+                # rep.send(self.conn)
             else:
                 print("Client requested to download")
                 decoder = Decoder(client_req.file_name)
@@ -199,7 +209,6 @@ class SingleClientServer:
             self.clean_up()
 
     def clean_up(self):
-        self.file.close()
         self.conn.close()
         if self.encoder is not None:
             self.encoder.close()
@@ -227,20 +236,41 @@ def serve(args):
 
 def upload(args):
     file_name = args.file
+    if not os.path.isfile(file_name):
+        print("File \"" + file_name + "\" does not exist")
+        exit(1)
+    file_size = os.path.getsize(file_name)
 
     # send request
     client_req = ClientRequest()
-    client_req.pack("upload", file_name)
+    client_req.pack("upload", file_name, file_size)
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setblocking(False)
+    s.connect((str(args.addr), args.p))
+
+    client_req.send(s)
+
+    with open(file_name, "rb") as f:
+        s.sendfile(f)
+        time.sleep(5)
+
+    s.close()
+
+    return None
 
     with socket.create_connection((str(args.addr), str(args.p))) as s:
+        # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
         client_req.send(s)
         with open(file_name, "rb") as f:
-            while True:
-                data = f.read(1024)
-                if not data:
-                    break
-                s.send(data)
-
+            s.sendfile(f)
+            # while True:
+            #     data = f.read(1024)
+            #     print(data)
+            #     if not data:
+            #         break
+            #     s.sendall(data)
         # with s.makefile(mode="rwb") as f:
         #     server_rep = ServerReply()
         #     server_rep.read_from_file(f)
