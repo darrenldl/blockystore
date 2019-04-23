@@ -88,7 +88,7 @@ class Message:
 
     def send(self, conn):
         conn.send(self.to_bytes())
-        conn.send("\n")
+        conn.send(b"\n")
 
 class ClientRequest(Message):
     OPS = ["upload", "download", "list"]
@@ -109,21 +109,20 @@ class ClientRequest(Message):
         self.op = op
         self.file_name = file_name
 
-    def from_file(self, file):
+    def read_from_file(self, file):
+        # msg = b""
+        # while not msg:
+        #     msg = json.loads(file.readline())
+
         msg = json.loads(file.readline())
+
+        print("test")
+        print(msg)
 
         self.op = msg["op"]
         if self.op not in ClientRequest.OPS:
             raise ValueError("Invalid op")
         self.file_name = msg["file_name"]
-
-    def send(self, conn):
-        msg = {
-            "op" : self.op,
-            "file_name" : self.file_name
-        }
-        conn.send(bytes(json.dumps(msg), "utf-8"))
-        conn.send(b"\n")
 
 class ServerReply(Message):
     def __init__(self):
@@ -140,7 +139,7 @@ class ServerReply(Message):
         self.okay = okay
         self.file_name = file_name
 
-    def from_file(self, file):
+    def read_from_file(self, file):
         msg = json.loads(file.readline())
 
         if msg.okay != True and msg.okay != False:
@@ -166,7 +165,7 @@ class SingleClientServer:
         try:
             # read request
             client_req = ClientRequest()
-            client_req.from_file(self.file)
+            client_req.read_from_file(self.file)
 
             if client_req.op == "upload":
                 print("Client requested to upload")
@@ -242,8 +241,13 @@ def upload(args):
                     break
                 s.send(data)
 
+        # with s.makefile(mode="rwb") as f:
+        #     server_rep = ServerReply()
+        #     server_rep.read_from_file(f)
+        #     print(server_rep)
+
 def download(args):
-    return None
+    pass
 
 def print_please_specify_subcommand(args):
     print("Invoke with -h or --help for help message")
