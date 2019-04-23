@@ -34,7 +34,7 @@ def check_for_blkar_installation():
         exit(1)
 
 class Encoder:
-    def __init__(self, filepath : str):
+    def __init__(self, file_path : str):
         self.proc = Popen(["blkar", "encode",
                            "--sbx-version", "19",
                            "--rs-data", str(rs_data),
@@ -42,7 +42,7 @@ class Encoder:
                            "--burst", str(burst),
                            "--json",
                            "-",
-                           filepath],
+                           file_path],
                           stdin=PIPE,
                           stdout=PIPE)
 
@@ -53,10 +53,10 @@ class Encoder:
         self.proc.stdin.close()
 
 class Decoder:
-    def __init__(self, filepath : str):
+    def __init__(self, file_path : str):
         self.proc = Popen(["blkar", "decode",
                            "--json",
-                           filepath,
+                           file_path,
                            "-"],
                           stdin=PIPE,
                           stdout=PIPE)
@@ -67,9 +67,23 @@ class Decoder:
     def close(self):
         self.proc.terminate()
 
+class ClientRequest:
+    def __init__(self):
+        self.op = None
+        self.file_name = None
+
+    def from_file(self, file):
+        msg = json.loads(file.readline())
+
+        self.op = msg["op"]
+        if self.op != "upload" and self.op != "download":
+            raise ValueError("Invalid op from client")
+        self.file_name = msg["file_name"]
+
 class SingleClientServer:
     def __init__(self, stop_ev, conn, addr):
         self.conn = conn
+        self.file = conn.makefile(mode='rb')
         self.addr = addr
         self.stop_ev = stop_ev
         self.encoder = None
@@ -79,53 +93,37 @@ class SingleClientServer:
         thread.start()
 
     def core(self):
-        print('Serving ', self.addr)
-        json_strs = []
-        left_over = b""
-        # read until ^ is encountered
-        while not self.stop_ev.is_set():
-            data = self.conn.recv(1024)
-            if not data:
-                break
-            split = bytes.split(data, b'^')
-            json_strs.append(split[0])
-            if len(split) > 1:
-                left_over = split[1]
-                break
+        print("Serving ", self.addr)
 
         try:
-            # parse JSON header
-            json_str = b"".join(json_strs)
-            print(json_str)
-            config = json.loads(json_str)
+            # read request
+            client_req = ClientRequest()
+            client_req.from_file(self.file)
 
-            client_op = config["client_op"]
-
-            if client_op == "upload":
+            if client_req.op == "upload":
                 print("Client requested to upload")
-                self.encoder = Encoder("file_placeholder")
-                print(left_over)
-                self.encoder.encode(left_over)
+                self.encoder = Encoder(client_req.file_name)
                 while True:
-                    data = self.conn.recv(1024)
+                    data = self.file.read(1024)
                     if not data:
                         break
                     self.encoder.encode(data)
-            elif mode == "decode":
-                print("Client requested to download")
-                decoder = Decoder("file_placeholder")
             else:
-                print("Client issued an invalid request")
+                print("Client requested to download")
+                decoder = Decoder(client_req.file_name)
         except json.decoder.JSONDecodeError:
             print("Invalid config sent from client")
         except KeyError:
             print("Invalid config sent from client")
         except KeyboardInterrupt:
             print("Interrupted")
+        except ValueError as e:
+            print(e)
         finally:
             self.clean_up()
 
     def clean_up(self):
+        self.file.close()
         self.conn.close()
         if self.encoder is not None:
             self.encoder.close()
