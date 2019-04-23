@@ -9,6 +9,11 @@ from subprocess import Popen, PIPE
 import socket
 import threading
 import json
+from datetime import datetime
+from pathlib import Path
+import os
+import random
+import string
 
 blkar_name="blkar"
 blkar_min_ver=version.parse("7.0.0")
@@ -21,6 +26,12 @@ rs_parity = 2
 burst = 10
 
 data_chunk = 4096 - 16
+
+def get_time_str():
+    return datetime.today().strftime("%Y-%m-%d_%H%M")
+
+def gen_random_str(len):
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=len))
 
 def check_for_blkar_installation():
     if shutil.which(blkar_name) == None:
@@ -67,12 +78,30 @@ class Decoder:
     def close(self):
         self.proc.terminate()
 
-class ClientRequest:
+class Message:
+    def to_bytes(self):
+        return bytes(json.dumps(self.to_dict()), "utf-8")
+
+    def write_to_file(self, file):
+        file.write(self.to_bytes())
+        file.write(b"\n")
+
+    def send(self, conn):
+        conn.send(self.to_bytes())
+        conn.send("\n")
+
+class ClientRequest(Message):
     OPS = ["upload", "download", "list"]
 
     def __init__(self):
         self.op = None
         self.file_name = None
+
+    def to_dict(self):
+        {
+            "op" : self.op,
+            "file_name" : self.file_name
+        }
 
     def pack(self, op, file_name):
         if op not in ClientRequest.OPS:
@@ -88,14 +117,6 @@ class ClientRequest:
             raise ValueError("Invalid op")
         self.file_name = msg["file_name"]
 
-    def write_to_file(self, file):
-        msg = {
-            "op" : self.op,
-            "file_name" : self.file_name
-        }
-        file.write(json.dumps(msg))
-        file.write("\n")
-
     def send(self, conn):
         msg = {
             "op" : self.op,
@@ -104,33 +125,28 @@ class ClientRequest:
         conn.send(bytes(json.dumps(msg), "utf-8"))
         conn.send(b"\n")
 
-class ServerReply:
+class ServerReply(Message):
     def __init__(self):
         self.okay = True
+        self.file_name = None
 
-    def pack(self, okay):
+    def to_dict(self):
+        {
+            "okay" : self.okay,
+            "file_name" : self.file_name
+        }
+
+    def pack(self, okay, file_name):
         self.okay = okay
+        self.file_name = file_name
 
     def from_file(self, file):
         msg = json.loads(file.readline())
 
         if msg.okay != True and msg.okay != False:
             raise ValueError("Invalid okay")
-        self.okay = msg.okay
-
-    def write_to_file(self, file):
-        msg = {
-            "okay" : self.okay
-        }
-        file.write(bytes(json.dumps(msg), "utf-8"))
-        file.write(b"\n")
-
-    def send(self, conn):
-        msg = {
-            "okay" : self.okay
-        }
-        conn.send(bytes(json.dumps(msg), "utf-8"))
-        conn.send("\n")
+        self.okay = msg["okay"]
+        self.file_name = msg["file_name"]
 
 class SingleClientServer:
     def __init__(self, stop_ev, conn, addr):
@@ -154,11 +170,14 @@ class SingleClientServer:
 
             if client_req.op == "upload":
                 print("Client requested to upload")
-                self.encoder = Encoder(client_req.file_name + ".ecsbx")
+                file_name = client_req.file_name + "_" + get_time_str() + "_" + gen_random_str(12) + ".ecsbx"
+                while os.path.isfile(file_name):
+                    file
+                self.encoder = Encoder(client_req.file_name + get_time_str() + ".ecsbx")
 
                 # send reply
                 rep = ServerReply()
-                rep.pack(True)
+                rep.pack(True, file_name)
                 rep.write_to_file(self.file)
 
                 while True:
