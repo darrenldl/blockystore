@@ -64,6 +64,8 @@ class Encoder:
 
     def close(self):
         self.proc.stdin.close()
+        out = self.proc.stdout.read()
+        return json.loads(out)
 
 class Decoder:
     def __init__(self, file_path : str):
@@ -127,16 +129,19 @@ class ServerReply(Message):
     def __init__(self):
         self.okay = True
         self.file_name = None
+        self.hsh = None
 
     def to_dict(self):
         return {
             "okay" : self.okay,
-            "file_name" : self.file_name
+            "file_name" : self.file_name,
+            "hsh" : self.hsh
         }
 
-    def pack(self, okay, file_name):
+    def pack(self, okay, file_name, hsh):
         self.okay = okay
         self.file_name = file_name
+        self.hsh = hsh
 
     def from_dict(self, msg):
         okay = msg["okay"]
@@ -144,6 +149,7 @@ class ServerReply(Message):
             raise ValueError("Invalid okay")
         self.okay = okay
         self.file_name = msg["file_name"]
+        self.hsh = msg["hsh"]
 
 class SingleClientServer:
     def __init__(self, stop_ev, conn, addr):
@@ -181,9 +187,14 @@ class SingleClientServer:
                     self.encoder.encode(data)
                 print("File transfer complete")
 
+                # get encode result
+                encode_res = self.encoder.close()
+                self.encoder = None
+                print(str(encode_res))
+
                 # send reply
                 rep = ServerReply()
-                rep.pack(True, file_name)
+                rep.pack(True, file_name, encode_res["stats"]["hash"])
                 rep.send(self.conn)
             else:
                 print("Client requested to download")
@@ -246,7 +257,7 @@ def upload(args):
     server_rep = ServerReply()
     server_rep.recv(s)
 
-    print(str(server_rep))
+    print(str(server_rep.to_dict()))
 
     s.close()
 
