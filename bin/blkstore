@@ -16,6 +16,7 @@ import random
 import string
 import sys
 import time
+import hashlib
 
 blkar_name="blkar"
 blkar_min_ver=version.parse("7.0.0")
@@ -129,19 +130,19 @@ class ServerReply(Message):
     def __init__(self):
         self.okay = True
         self.file_name = None
-        self.hsh = None
+        self.hash = None
 
     def to_dict(self):
         return {
             "okay" : self.okay,
             "file_name" : self.file_name,
-            "hsh" : self.hsh
+            "hash" : self.hash
         }
 
-    def pack(self, okay, file_name, hsh):
+    def pack(self, okay, file_name, hash):
         self.okay = okay
         self.file_name = file_name
-        self.hsh = hsh
+        self.hash = hash
 
     def from_dict(self, msg):
         okay = msg["okay"]
@@ -149,7 +150,7 @@ class ServerReply(Message):
             raise ValueError("Invalid okay")
         self.okay = okay
         self.file_name = msg["file_name"]
-        self.hsh = msg["hsh"]
+        self.hash = msg["hash"]
 
 class SingleClientServer:
     def __init__(self, stop_ev, conn, addr):
@@ -200,9 +201,9 @@ class SingleClientServer:
                 print("Client requested to download")
                 decoder = Decoder(client_req.file_name)
         except json.decoder.JSONDecodeError:
-            print("t1 Invalid config sent from client")
+            print("Invalid message sent from client")
         except KeyError:
-            print("t2 Invalid config sent from client")
+            print("Invalid message sent from client")
         except KeyboardInterrupt:
             print("Interrupted")
         except ValueError as e:
@@ -251,13 +252,30 @@ def upload(args):
 
     client_req.send(s)
 
+    m = hashlib.sha256()
+
     with open(file_name, "rb") as f:
-        s.sendfile(f)
+        while True:
+            data = f.read(4096)
+            if not data:
+                break
+            s.send(data)
+            m.update(data)
+
+    local_hash = m.digest()
 
     server_rep = ServerReply()
     server_rep.recv(s)
 
-    print(str(server_rep.to_dict()))
+    server_hash = bytes.fromhex(server_rep.hash.split(" - ")[1])
+
+    print(local_hash)
+    print(server_hash)
+
+    if local_hash == server_hash:
+        print("Server's hash matches local hash")
+    else:
+        print("Server's hash does NOT match local hash")
 
     s.close()
 
