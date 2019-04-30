@@ -209,7 +209,7 @@ class SingleClientServer:
             self.clean_up()
 
     def clean_up(self):
-        self.conn.close()
+        self.conn.shutdown()
         if self.encoder is not None:
             self.encoder.close()
         if self.decoder is not None:
