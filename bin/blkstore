@@ -92,7 +92,7 @@ class Message:
     def recv(self, conn):
         msg_len = int.from_bytes(conn.recv(2), byteorder="big")
         msg = conn.recv(msg_len)
-        self.from_bytes(msg)
+        self.from_dict(json.loads(msg))
 
 class ClientRequest(Message):
     OPS = ["upload", "download", "list"]
@@ -116,7 +116,7 @@ class ClientRequest(Message):
         self.file_name = file_name
         self.file_size = file_size
 
-    def from_bytes(self, msg):
+    def from_dict(self, msg):
         self.op = msg["op"]
         if self.op not in ClientRequest.OPS:
             raise ValueError("Invalid op")
@@ -138,7 +138,7 @@ class ServerReply(Message):
         self.okay = okay
         self.file_name = file_name
 
-    def from_bytes(self, msg):
+    def from_dict(self, msg):
         if msg.okay != True and msg.okay != False:
             raise ValueError("Invalid okay")
         self.okay = msg["okay"]
@@ -160,10 +160,8 @@ class SingleClientServer:
 
         try:
             # read request
-            f = self.conn.makefile(mode="rb")
             client_req = ClientRequest()
-            client_req.read_from_file(f)
-            f.close()
+            client_req.recv(self.conn)
 
             if client_req.op == "upload":
                 print("Client requested to upload")
@@ -174,9 +172,7 @@ class SingleClientServer:
                 len_read = 0
                 while len_read < client_req.file_size:
                     len_remaining = client_req.file_size - len_read
-                    # data = self.conn.recv(len_remaining)
-                    data = self.conn.recv(1024)
-                    # print(data)
+                    data = self.conn.recv(len_remaining)
                     len_read += len(data)
                     print(len_read)
                     if not data:
@@ -203,7 +199,6 @@ class SingleClientServer:
             self.clean_up()
 
     def clean_up(self):
-        # self.conn.shutdown(socket.SHUT_RDWR)
         self.conn.close()
         if self.encoder is not None:
             self.encoder.close()
@@ -239,39 +234,16 @@ def upload(args):
     client_req = ClientRequest()
     client_req.pack("upload", file_name, file_size)
 
-    # s = socket.create_connection((str(args.addr), str(args.p)))
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # s.setblocking(False)
     s.connect((str(args.addr), args.p))
 
-    # client_req.send(s)
-
-    with open(file_name, "rb") as f:
-        s.sendfile(f)
-
-    s.shutdown(socket.SHUT_RDWR)
-    s.close()
-
-    return None
-
-    s = socket.create_connection((str(args.addr), str(args.p)))
-    # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
     client_req.send(s)
+
     with open(file_name, "rb") as f:
         s.sendfile(f)
-        # while True:
-        #     data = f.read(1024)
-        #     print(data)
-        #     if not data:
-        #         break
-        #     s.sendall(data)
-    # with s.makefile(mode="rwb") as f:
-    #     server_rep = ServerReply()
-    #     server_rep.read_from_file(f)
-    #     print(server_rep)
-    s.shutdown(socket.SHUT_RDWR)
-    # s.close()
+
+    # s.shutdown(socket.SHUT_RDWR)
+    s.close()
 
 def download(args):
     pass
