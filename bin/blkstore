@@ -139,9 +139,10 @@ class ServerReply(Message):
         self.file_name = file_name
 
     def from_dict(self, msg):
-        if msg.okay != True and msg.okay != False:
+        okay = msg["okay"]
+        if okay != True and okay != False:
             raise ValueError("Invalid okay")
-        self.okay = msg["okay"]
+        self.okay = okay
         self.file_name = msg["file_name"]
 
 class SingleClientServer:
@@ -181,9 +182,9 @@ class SingleClientServer:
                 print("File transfer complete")
 
                 # send reply
-                # rep = ServerReply()
-                # rep.pack(True, file_name)
-                # rep.send(self.conn)
+                rep = ServerReply()
+                rep.pack(True, file_name)
+                rep.send(self.conn)
             else:
                 print("Client requested to download")
                 decoder = Decoder(client_req.file_name)
@@ -242,7 +243,11 @@ def upload(args):
     with open(file_name, "rb") as f:
         s.sendfile(f)
 
-    # s.shutdown(socket.SHUT_RDWR)
+    server_rep = ServerReply()
+    server_rep.recv(s)
+
+    print(str(server_rep))
+
     s.close()
 
 def download(args):
