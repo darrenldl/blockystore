@@ -33,8 +33,8 @@ data_chunk = 4096 - 16
 def get_time_str():
     return datetime.today().strftime("%Y-%m-%d_%H%M")
 
-def gen_random_str(len):
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=len))
+def gen_random_hex_str(len):
+    return ''.join(random.choices(string.hexdigits, k=len))
 
 def check_for_blkar_installation():
     if shutil.which(blkar_name) == None:
@@ -48,9 +48,10 @@ def check_for_blkar_installation():
         exit(1)
 
 class Encoder:
-    def __init__(self, file_path : str):
+    def __init__(self, uid : str, file_path : str):
         self.proc = Popen(["blkar", "encode",
                            "--sbx-version", "19",
+                           "--uid", uid,
                            "--rs-data", str(rs_data),
                            "--rs-parity", str(rs_parity),
                            "--burst", str(burst),
@@ -173,8 +174,9 @@ class SingleClientServer:
 
             if client_req.op == "upload":
                 print("Client requested to upload")
-                file_name = client_req.file_name + "_" + get_time_str() + "_" + gen_random_str(12) + ".ecsbx"
-                self.encoder = Encoder(file_name)
+                uid = gen_random_hex_str(12)
+                file_name = client_req.file_name + "_" + get_time_str() + "_" + uid + ".ecsbx"
+                self.encoder = Encoder(uid, file_name)
 
                 print("Receiving file")
                 len_read = 0
@@ -182,7 +184,6 @@ class SingleClientServer:
                     len_remaining = client_req.file_size - len_read
                     data = self.conn.recv(len_remaining)
                     len_read += len(data)
-                    print(len_read)
                     if not data:
                         break
                     self.encoder.encode(data)
@@ -191,7 +192,6 @@ class SingleClientServer:
                 # get encode result
                 encode_res = self.encoder.close()
                 self.encoder = None
-                print(str(encode_res))
 
                 # send reply
                 rep = ServerReply()
@@ -262,15 +262,12 @@ def upload(args):
             s.send(data)
             m.update(data)
 
-    local_hash = m.digest()
+    local_hash = m.digest().hex()
 
     server_rep = ServerReply()
     server_rep.recv(s)
 
-    server_hash = bytes.fromhex(server_rep.hash.split(" - ")[1])
-
-    print(local_hash)
-    print(server_hash)
+    server_hash = server_rep.hash.split(" - ")[1]
 
     if local_hash == server_hash:
         print("Server's hash matches local hash")
