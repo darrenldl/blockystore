@@ -84,13 +84,15 @@ class Message:
     def to_bytes(self):
         return bytes(json.dumps(self.to_dict()), "utf-8")
 
-    def write_to_file(self, file):
-        file.write(self.to_bytes())
-        file.write(b"\n")
-
     def send(self, conn):
-        conn.send(self.to_bytes())
-        conn.send(b"\n")
+        msg = self.to_bytes()
+        conn.send(len(msg).to_bytes(2, byteorder="big"))
+        conn.send(msg)
+
+    def recv(self, conn):
+        msg_len = int.from_bytes(conn.recv(2), byteorder="big")
+        msg = conn.recv(msg_len)
+        self.from_bytes(msg)
 
 class ClientRequest(Message):
     OPS = ["upload", "download", "list"]
@@ -114,12 +116,7 @@ class ClientRequest(Message):
         self.file_name = file_name
         self.file_size = file_size
 
-    def read_from_file(self, file):
-        msg = json.loads(file.readline())
-
-        print("test")
-        print(msg)
-
+    def from_bytes(self, msg):
         self.op = msg["op"]
         if self.op not in ClientRequest.OPS:
             raise ValueError("Invalid op")
@@ -141,9 +138,7 @@ class ServerReply(Message):
         self.okay = okay
         self.file_name = file_name
 
-    def read_from_file(self, file):
-        msg = json.loads(file.readline())
-
+    def from_bytes(self, msg):
         if msg.okay != True and msg.okay != False:
             raise ValueError("Invalid okay")
         self.okay = msg["okay"]
@@ -151,8 +146,6 @@ class ServerReply(Message):
 
 class SingleClientServer:
     def __init__(self, stop_ev, conn, addr):
-        # conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        # conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
         self.conn = conn
         self.addr = addr
         self.stop_ev = stop_ev
@@ -166,10 +159,11 @@ class SingleClientServer:
         print("Serving ", self.addr)
 
         try:
-            with self.conn.makefile(mode="rb") as f:
-                # read request
-                client_req = ClientRequest()
-                client_req.read_from_file(f)
+            # read request
+            f = self.conn.makefile(mode="rb")
+            client_req = ClientRequest()
+            client_req.read_from_file(f)
+            f.close()
 
             if client_req.op == "upload":
                 print("Client requested to upload")
@@ -198,9 +192,9 @@ class SingleClientServer:
                 print("Client requested to download")
                 decoder = Decoder(client_req.file_name)
         except json.decoder.JSONDecodeError:
-            print("Invalid config sent from client")
+            print("t1 Invalid config sent from client")
         except KeyError:
-            print("Invalid config sent from client")
+            print("t2 Invalid config sent from client")
         except KeyboardInterrupt:
             print("Interrupted")
         except ValueError as e:
@@ -209,7 +203,8 @@ class SingleClientServer:
             self.clean_up()
 
     def clean_up(self):
-        self.conn.shutdown()
+        # self.conn.shutdown(socket.SHUT_RDWR)
+        self.conn.close()
         if self.encoder is not None:
             self.encoder.close()
         if self.decoder is not None:
@@ -217,7 +212,6 @@ class SingleClientServer:
 
     def run(self):
         self.core()
-        self.clean_up()
 
 def serve(args):
     stop_ev = threading.Event()
@@ -245,36 +239,39 @@ def upload(args):
     client_req = ClientRequest()
     client_req.pack("upload", file_name, file_size)
 
+    # s = socket.create_connection((str(args.addr), str(args.p)))
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setblocking(False)
+    # s.setblocking(False)
     s.connect((str(args.addr), args.p))
 
-    client_req.send(s)
+    # client_req.send(s)
 
     with open(file_name, "rb") as f:
         s.sendfile(f)
-        time.sleep(5)
 
+    s.shutdown(socket.SHUT_RDWR)
     s.close()
 
     return None
 
-    with socket.create_connection((str(args.addr), str(args.p))) as s:
-        # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
-        client_req.send(s)
-        with open(file_name, "rb") as f:
-            s.sendfile(f)
-            # while True:
-            #     data = f.read(1024)
-            #     print(data)
-            #     if not data:
-            #         break
-            #     s.sendall(data)
-        # with s.makefile(mode="rwb") as f:
-        #     server_rep = ServerReply()
-        #     server_rep.read_from_file(f)
-        #     print(server_rep)
+    s = socket.create_connection((str(args.addr), str(args.p)))
+    # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CORK, 0)
+    client_req.send(s)
+    with open(file_name, "rb") as f:
+        s.sendfile(f)
+        # while True:
+        #     data = f.read(1024)
+        #     print(data)
+        #     if not data:
+        #         break
+        #     s.sendall(data)
+    # with s.makefile(mode="rwb") as f:
+    #     server_rep = ServerReply()
+    #     server_rep.read_from_file(f)
+    #     print(server_rep)
+    s.shutdown(socket.SHUT_RDWR)
+    # s.close()
 
 def download(args):
     pass
